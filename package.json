@@ -1,0 +1,17 @@
+{
+  "name": "jarvis-relay",
+  "version": "1.0.0",
+  "description": "Self-hosted WebSocket relay for FRIDAY / Jarvis mobile control",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "express": "^4.21.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

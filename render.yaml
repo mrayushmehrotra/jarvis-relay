@@ -1,0 +1,13 @@
+# FRIDAY Relay — Render Deployment Config
+services:
+  - type: web
+    name: jarvis-relay
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: JARVIS_SECRET
+        generateValue: false
+        value: "change-me-to-a-strong-secret"
+    healthCheckPath: /health
