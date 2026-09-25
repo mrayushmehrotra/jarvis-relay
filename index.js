@@ -22,6 +22,9 @@ const SECRET = process.env.JARVIS_SECRET || "change-me-to-a-strong-secret";
 let agentSocket = null;
 let agentConnectedAt = null;
 
+/** @type {string | null} The current phone pairing token, registered by the agent */
+let phoneToken = null;
+
 /** @type {Set<WebSocket>} All connected phone clients */
 const phoneClients = new Set();
 
@@ -34,6 +37,7 @@ app.get("/", (_req, res) => {
     status: "online",
     agent_connected: agentSocket !== null,
     phone_clients: phoneClients.size,
+    pairing_token_registered: phoneToken !== null,
     agent_connected_at: agentConnectedAt,
     uptime_seconds: Math.floor(process.uptime()),
   });
@@ -102,6 +106,21 @@ wss.on("connection", (ws, req) => {
       // Agent → phones: forward the response
       try {
         const msg = JSON.parse(raw.toString());
+
+        // Control messages the agent sends us, not the phones
+        if (msg.type === "register_phone_token") {
+          phoneToken = String(msg.token || "");
+          console.log(`[RELAY] Phone pairing token updated (${phoneToken.slice(0, 4)}…).`);
+          // Rotating the token revokes every phone still holding the old one
+          for (const client of phoneClients) {
+            if (client.readyState === WebSocket.OPEN && client.pairToken !== phoneToken) {
+              console.log("[RELAY] ⛔ Closing stale phone (old pairing token).");
+              client.close(4003, "Pairing token rotated. Re-scan the QR.");
+            }
+          }
+          return;
+        }
+
         console.log(`[AGENT→PHONE] type=${msg.type}`);
         broadcastToPhones(msg);
       } catch (e) {
@@ -125,6 +144,21 @@ wss.on("connection", (ws, req) => {
 
   // ── Phone client connection ──────────────────────────────────────────────────
   if (role === "phone") {
+    // Edge auth: if the PC has registered a pairing token, the phone MUST hold
+    // it. Otherwise fall back to the shared secret (pre-pairing relay).
+    const token = url.searchParams.get("token");
+    if (phoneToken) {
+      if (token !== phoneToken) {
+        console.warn("[AUTH] Rejected phone — invalid pairing token");
+        ws.close(4003, "Unauthorized: invalid pairing token. Scan the QR on your PC.");
+        return;
+      }
+    } else if (secret !== SECRET) {
+      console.warn("[AUTH] Rejected phone — invalid secret");
+      ws.close(4001, "Unauthorized: invalid secret");
+      return;
+    }
+    ws.pairToken = token;
     phoneClients.add(ws);
     console.log(`[PHONE] 📱 Client connected. Total phones: ${phoneClients.size}`);
 
